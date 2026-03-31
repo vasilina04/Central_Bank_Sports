@@ -7,20 +7,23 @@
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f9; color: #333; }
         h2 { text-align: center; color: #2ea44f; }
-        .table-container { max-width: 800px; margin: 0 auto; overflow-x: auto; background: white; padding: 20px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 8px; }
+        .table-container { max-width: 900px; margin: 0 auto; overflow-x: auto; background: white; padding: 20px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 8px; }
         
-        /* Стили для выбора листа */
         .controls { text-align: center; margin-bottom: 20px; }
         .controls label { font-weight: bold; margin-right: 10px; font-size: 16px; }
-        select { padding: 10px 15px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; outline: none; background-color: #fff; }
+        select { padding: 10px 15px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; background-color: #fff; }
         select:hover { border-color: #2ea44f; }
         
-        table { width: 100%; border-collapse: collapse; overflow: hidden; }
-        th, td { padding: 12px 15px; text-align: center; border-bottom: 1px solid #ddd; }
-        th { background-color: #2ea44f; color: white; font-weight: bold; }
-        tr:hover { background-color: #f1f1f1; }
+        table { width: 100%; border-collapse: collapse; }
+        td { padding: 10px; text-align: center; border: 1px solid #ddd; }
+        tr:hover { background-color: #f9f9f9; }
+
+        /* --- ОСОБЫЕ СТИЛИ ДЛЯ ВАШЕЙ ТАБЛИЦЫ --- */
+        /* 1. Настройка первой строки ("Группа А") */
+        tr:nth-child(1) td { font-weight: bold; font-size: 18px; color: #2ea44f; text-align: left; background-color: #fff; border-top: none; border-left: none; border-right: none;}
+        /* 2. Настройка второй строки (Заголовки "1", "2", "3"...) */
+        tr:nth-child(2) td { background-color: #2ea44f; color: white; font-weight: bold; border-color: #1f853d; }
         
-        /* Сообщение о загрузке */
         #loading { text-align: center; font-size: 18px; color: #666; margin: 20px 0; display: none; }
     </style>
 </head>
@@ -30,9 +33,8 @@
         <h2>🏆 Турнирная Таблица</h2>
         
         <div class="controls">
-            <label for="sheet-select">Выберите блок (лист):</label>
-            <select id="sheet-select">
-                </select>
+            <label for="sheet-select">Выберите этап/группу:</label>
+            <select id="sheet-select"></select>
         </div>
 
         <div id="loading">Загрузка данных... ⏳</div>
@@ -42,19 +44,15 @@
     </div>
 
     <script>
-        // 1. ВАШ ID ТАБЛИЦЫ
         const SHEET_ID = '1Aq8Kow_unD9Z_mclRBg0mcPl8Ibh64_s7rqVrvdVq3I'; 
         
-        // 2. ВАЖНО: Впишите сюда точные названия ваших листов из Google Таблицы!
-        // Соблюдайте заглавные буквы и пробелы. Обязательно в кавычках через запятую.
-        const SHEET_NAMES = ['Расписание', 'Граппа А', 'Группа Б']; 
+        // ВНИМАНИЕ: Напишите здесь точные названия листов из вашей таблицы!
+        const SHEET_NAMES = ['Лист1', 'Лист2']; 
 
-        // Элементы на странице
         const selectEl = document.getElementById('sheet-select');
         const tableEl = document.getElementById('tournament-table');
         const loadingEl = document.getElementById('loading');
 
-        // Заполняем выпадающий список названиями листов
         SHEET_NAMES.forEach(name => {
             const option = document.createElement('option');
             option.value = name;
@@ -62,70 +60,72 @@
             selectEl.appendChild(option);
         });
 
-        // Функция для загрузки конкретного листа
         function loadSheet(sheetName) {
-            // Показываем загрузку, очищаем старую таблицу
             loadingEl.style.display = 'block';
             tableEl.innerHTML = ''; 
 
-            // Добавляем параметр &sheet=НазваниеЛиста в ссылку
-            const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&headers=1&sheet=${encodeURIComponent(sheetName)}`;
+            // Параметр headers=0 заставляет код считывать абсолютно все строки как данные
+            const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&headers=0&sheet=${encodeURIComponent(sheetName)}`;
 
             fetch(API_URL)
                 .then(response => response.text())
                 .then(text => {
                     const jsonString = text.match(/google\.visualization\.Query\.setResponse\(([\s\S\w]+)\)/)[1];
                     const data = JSON.parse(jsonString);
-                    
-                    // Скрываем надпись "Загрузка"
                     loadingEl.style.display = 'none';
 
-                    // Если лист пустой или не найден
-                    if (!data.table || !data.table.cols || !data.table.rows) {
-                        tableEl.innerHTML = '<tr><td style="color:red;">Данные не найдены. Проверьте название листа!</td></tr>';
+                    if (!data.table || !data.table.rows) {
+                        tableEl.innerHTML = '<tr><td style="color:red;">Данные не найдены.</td></tr>';
                         return;
                     }
 
-                    // 1. Создаем заголовки
-                    const thead = document.createElement('tr');
-                    data.table.cols.forEach(col => {
-                        if(col.label) {
-                            const th = document.createElement('th');
-                            th.textContent = col.label; 
-                            thead.appendChild(th);
-                        }
-                    });
-                    tableEl.appendChild(thead);
-
-                    // 2. Создаем строки
                     data.table.rows.forEach(row => {
                         const tr = document.createElement('tr');
+                        let isEmptyRow = true; 
+
+                        // Проверяем, не пустая ли строка целиком
+                        row.c.forEach(cell => {
+                            if (cell !== null && cell.v !== null && String(cell.v).trim() !== '') {
+                                isEmptyRow = false;
+                            }
+                        });
+
+                        if (isEmptyRow) return;
+
+                        // Создаем ячейки
                         row.c.forEach(cell => {
                             const td = document.createElement('td');
+                            
                             let cellValue = '';
-                            if (cell !== null && cell !== undefined) {
-                                cellValue = cell.f !== undefined ? cell.f : cell.v;
+                            if (cell !== null && cell.v !== null) {
+                                cellValue = cell.f !== undefined ? String(cell.f) : String(cell.v);
                             }
-                            td.textContent = cellValue;
+                            
+                            const valStr = cellValue.trim();
+
+                            // ГЛАВНОЕ УСЛОВИЕ: если стоит прочерк, делаем красным!
+                            if (valStr === '-') {
+                                td.style.backgroundColor = '#ff4d4d'; // Красный цвет
+                                td.textContent = ''; // Убираем сам минус визуально (по желанию)
+                            } else {
+                                td.textContent = valStr;
+                            }
+                            
                             tr.appendChild(td);
                         });
+                        
                         tableEl.appendChild(tr);
                     });
                 })
                 .catch(error => {
                     console.error('Ошибка загрузки:', error);
                     loadingEl.style.display = 'none';
-                    tableEl.innerHTML = `<tr><td style="color: red;"><b>Ошибка!</b> Возможно, неверно указано название листа: "${sheetName}".</td></tr>`;
+                    tableEl.innerHTML = `<tr><td style="color: red;"><b>Ошибка загрузки!</b> Проверьте название листа.</td></tr>`;
                 });
         }
 
-        // Слушаем изменения в выпадающем списке. 
-        // Когда пользователь выбирает другой лист, запускаем загрузку
-        selectEl.addEventListener('change', (event) => {
-            loadSheet(event.target.value);
-        });
+        selectEl.addEventListener('change', (event) => loadSheet(event.target.value));
 
-        // Загружаем самый первый лист из массива при открытии страницы
         if (SHEET_NAMES.length > 0) {
             loadSheet(SHEET_NAMES[0]);
         }
