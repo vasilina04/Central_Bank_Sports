@@ -120,10 +120,8 @@
                         const populatedCells = row.filter(val => val !== '');
                         if (populatedCells.length === 0) return; 
 
-                        // Надежная проверка на судью
                         const isJudgeRow = row.some(val => val.toLowerCase().includes('судья'));
                         if (isJudgeRow) {
-                            // Склеиваем всё, что нашли в строке судьи, через пробел
                             judgeInfoEl.textContent = populatedCells.join(' ').replace(/: /g, ' ').replace(/Судья соревнований/i, 'Судья соревнований:');
                             judgeInfoEl.style.display = 'block';
                             return; 
@@ -158,14 +156,17 @@
                                 row.forEach(val => {
                                     const td = document.createElement('td');
                                     
-                                    // Ловим любые прочерки: минус, короткое тире, длинное тире
-                                    const isDash = ['нет', '—', '–', '−'].includes(val);
+                                    // Приводим значение к нижнему регистру, чтобы поймать "Нет", "НЕТ", "нет"
+                                    const cleanVal = val.toLowerCase().trim();
                                     
-                                    if (isDash) {
-                                        td.style.backgroundColor = '#ff4d4d'; // Красим в красный
-                                        // td.textContent = ''; // Раскомментируйте эту строку, если хотите, чтобы сам минус исчезал с красного фона
+                                    // Проверяем: это прочерк или слово "нет"?
+                                    const isRedCell = ['-', '—', '–', '−', 'нет'].includes(cleanVal);
+                                    
+                                    if (isRedCell) {
+                                        td.style.backgroundColor = '#ff4d4d'; // Закрашиваем красным
+                                        td.textContent = ''; // Делаем ячейку пустой
                                     } else {
-                                        td.textContent = val;
+                                        td.textContent = val; // Иначе вставляем обычный текст
                                     }
                                     
                                     if (val.includes(':') && val.length <= 5) {
