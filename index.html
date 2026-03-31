@@ -6,13 +6,15 @@
     <title>Турнирная таблица</title>
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f9; color: #333; }
-        h2 { text-align: center; color: #2ea44f; margin-bottom: 10px; }
+        h2 { text-align: center; color: #2ea44f; margin-bottom: 20px; }
         
         .table-container { max-width: 950px; margin: 0 auto; overflow-x: auto; background: white; padding: 20px 30px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 8px; }
         
-        .controls { text-align: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee; }
-        .controls label { font-weight: bold; margin-right: 10px; font-size: 16px; }
-        select { padding: 8px 15px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; outline: none; }
+        /* Стили для панели управления (два меню рядом) */
+        .controls { display: flex; justify-content: center; flex-wrap: wrap; gap: 20px; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #eee; }
+        .control-group { display: flex; align-items: center; gap: 10px; }
+        .controls label { font-weight: bold; font-size: 16px; color: #555;}
+        select { padding: 8px 15px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; outline: none; background-color: #fff; min-width: 150px;}
         select:hover { border-color: #2ea44f; }
         
         #group-title { text-align: center; color: #333; font-size: 22px; margin-bottom: 15px; margin-top: 10px; }
@@ -33,11 +35,17 @@
 <body>
 
     <div class="table-container">
-        <h2>🏆 Турнирная Таблица</h2>
+        <h2>🏆 Спортивный портал</h2>
         
         <div class="controls">
-            <label for="sheet-select">Выберите блок:</label>
-            <select id="sheet-select"></select>
+            <div class="control-group">
+                <label for="sport-select">Спорт:</label>
+                <select id="sport-select"></select>
+            </div>
+            <div class="control-group">
+                <label for="sheet-select">Блок:</label>
+                <select id="sheet-select"></select>
+            </div>
         </div>
 
         <div id="loading">Загрузка данных... ⏳</div>
@@ -56,33 +64,84 @@
     </div>
 
     <script>
-        const SHEET_ID = '1Aq8Kow_unD9Z_mclRBg0mcPl8Ibh64_s7rqVrvdVq3I'; 
-        const SHEET_NAMES = ['Расписание', 'Группа А', 'Группа Б']; 
+        // ==========================================
+        // НАСТРОЙКА ВИДОВ СПОРТА И ТАБЛИЦ
+        // ==========================================
+        const SPORTS_DATA = {
+            "Волейбол": {
+                id: "1Aq8Kow_unD9Z_mclRBg0mcPl8Ibh64_s7rqVrvdVq3I", 
+                sheets: ['Расписание', 'Группа А', 'Группа Б']
+            },
+            "Баскетбол": {
+                id: "ВСТАВЬТЕ_ID_ДЛЯ_БАСКЕТБОЛА_СЮДА", 
+                sheets: ['Группа 1', 'Группа 2', 'Плей-офф']
+            },
+            "Настольный теннис": {
+                id: "ВСТАВЬТЕ_ID_ДЛЯ_ТЕННИСА_СЮДА", 
+                sheets: ['Мужчины', 'Женщины']
+            }
+        };
+        // ==========================================
 
-        const selectEl = document.getElementById('sheet-select');
+        const selectSportEl = document.getElementById('sport-select');
+        const selectSheetEl = document.getElementById('sheet-select');
         const loadingEl = document.getElementById('loading');
+        
         const groupTitleEl = document.getElementById('group-title');
         const tableHeadersEl = document.getElementById('table-headers');
         const tableBodyEl = document.getElementById('table-body');
         const judgeInfoEl = document.getElementById('judge-info');
 
-        SHEET_NAMES.forEach(name => {
-            const option = document.createElement('option');
-            option.value = name;
-            option.textContent = name;
-            selectEl.appendChild(option);
-        });
-
-        function loadSheet(sheetName) {
-            loadingEl.style.display = 'block';
+        // Инициализация: заполняем список видов спорта
+        function init() {
+            for (let sportName in SPORTS_DATA) {
+                const option = document.createElement('option');
+                option.value = sportName;
+                option.textContent = sportName;
+                selectSportEl.appendChild(option);
+            }
             
+            // Загружаем листы для первого спорта в списке
+            const firstSport = Object.keys(SPORTS_DATA)[0];
+            updateSheetsList(firstSport);
+        }
+
+        // Обновление списка листов при смене спорта
+        function updateSheetsList(sportName) {
+            selectSheetEl.innerHTML = ''; // Очищаем старые листы
+            const sheets = SPORTS_DATA[sportName].sheets;
+            
+            sheets.forEach(sheetName => {
+                const option = document.createElement('option');
+                option.value = sheetName;
+                option.textContent = sheetName;
+                selectSheetEl.appendChild(option);
+            });
+
+            // Автоматически загружаем первый лист нового спорта
+            if (sheets.length > 0) {
+                loadTableData(sportName, sheets[0]);
+            } else {
+                clearTable();
+                tableBodyEl.innerHTML = '<tr><td style="color:red;">Для этого спорта не указаны листы.</td></tr>';
+            }
+        }
+
+        function clearTable() {
             groupTitleEl.textContent = '';
             tableHeadersEl.innerHTML = '';
             tableBodyEl.innerHTML = '';
             judgeInfoEl.textContent = '';
             judgeInfoEl.style.display = 'none';
+        }
 
-            const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&headers=0&sheet=${encodeURIComponent(sheetName)}`;
+        // Загрузка данных из Google
+        function loadTableData(sportName, sheetName) {
+            loadingEl.style.display = 'block';
+            clearTable();
+
+            const currentId = SPORTS_DATA[sportName].id;
+            const API_URL = `https://docs.google.com/spreadsheets/d/${currentId}/gviz/tq?tqx=out:json&headers=0&sheet=${encodeURIComponent(sheetName)}`;
 
             fetch(API_URL)
                 .then(response => response.text())
@@ -155,18 +214,16 @@
                             else {
                                 row.forEach(val => {
                                     const td = document.createElement('td');
-                                    
-                                    // Приводим значение к нижнему регистру, чтобы поймать "Нет", "НЕТ", "нет"
                                     const cleanVal = val.toLowerCase().trim();
                                     
-                                    // Проверяем: это прочерк или слово "нет"?
+                                    // Ловим прочерки и слово "нет"
                                     const isRedCell = ['-', '—', '–', '−', 'нет'].includes(cleanVal);
                                     
                                     if (isRedCell) {
-                                        td.style.backgroundColor = '#ff4d4d'; // Закрашиваем красным
-                                        td.textContent = ''; // Делаем ячейку пустой
+                                        td.style.backgroundColor = '#ff4d4d'; 
+                                        td.textContent = ''; 
                                     } else {
-                                        td.textContent = val; // Иначе вставляем обычный текст
+                                        td.textContent = val; 
                                     }
                                     
                                     if (val.includes(':') && val.length <= 5) {
@@ -187,8 +244,18 @@
                 });
         }
 
-        selectEl.addEventListener('change', (event) => loadSheet(event.target.value));
-        if (SHEET_NAMES.length > 0) loadSheet(SHEET_NAMES[0]);
+        // Слушатели событий для выпадающих списков
+        selectSportEl.addEventListener('change', (event) => {
+            updateSheetsList(event.target.value);
+        });
+
+        selectSheetEl.addEventListener('change', (event) => {
+            const currentSport = selectSportEl.value;
+            loadTableData(currentSport, event.target.value);
+        });
+
+        // Запускаем всё при загрузке страницы
+        init();
     </script>
 </body>
 </html>
