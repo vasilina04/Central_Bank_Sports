@@ -8,22 +8,25 @@
         body { font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f9; color: #333; }
         h2 { text-align: center; color: #2ea44f; margin-bottom: 10px; }
         
-        .table-container { max-width: 900px; margin: 0 auto; overflow-x: auto; background: white; padding: 20px 30px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 8px; }
+        .table-container { max-width: 950px; margin: 0 auto; overflow-x: auto; background: white; padding: 20px 30px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 8px; }
         
         .controls { text-align: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee; }
         .controls label { font-weight: bold; margin-right: 10px; font-size: 16px; }
         select { padding: 8px 15px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; outline: none; }
         select:hover { border-color: #2ea44f; }
         
-        /* Заголовок группы (например, "Группа А") */
-        #group-title { text-align: left; color: #333; font-size: 20px; margin-bottom: 15px; margin-top: 10px; }
+        /* Заголовок группы (например, "Группа А" или "Расписание") */
+        #group-title { text-align: center; color: #333; font-size: 22px; margin-bottom: 15px; margin-top: 10px; }
         
         table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-        th, td { padding: 12px; text-align: center; border: 1px solid #ddd; }
+        th, td { padding: 10px 12px; text-align: center; border: 1px solid #ddd; vertical-align: middle; }
         
-        /* Стили для зеленой шапки (вторая строка из гугла) */
+        /* Стили для зеленой шапки */
         th { background-color: #2ea44f; color: white; font-weight: bold; border-color: #1f853d; }
         tr:hover td { background-color: #f9f9f9; }
+
+        /* Стили для строк-разделителей (например "8 мая") */
+        .sub-header td { background-color: #e8f5e9 !important; font-weight: bold; color: #2ea44f; font-size: 16px; border-top: 2px solid #2ea44f; border-bottom: 2px solid #2ea44f;}
 
         /* Блок для судьи под таблицей */
         #judge-info { text-align: right; font-size: 16px; font-weight: bold; font-style: italic; color: #555; }
@@ -37,7 +40,7 @@
         <h2>🏆 Турнирная Таблица</h2>
         
         <div class="controls">
-            <label for="sheet-select">Выберите этап:</label>
+            <label for="sheet-select">Выберите блок:</label>
             <select id="sheet-select"></select>
         </div>
 
@@ -60,8 +63,8 @@
         // 1. ВАШ ID ТАБЛИЦЫ
         const SHEET_ID = '1Aq8Kow_unD9Z_mclRBg0mcPl8Ibh64_s7rqVrvdVq3I'; 
         
-        // 2. ВАШИ ЛИСТЫ (ЗАПОЛНИТЕ ИХ!)
-        const SHEET_NAMES = ['Расписание', 'Группа А', "Группа Б"]; 
+        // 2. СПИСОК ЛИСТОВ
+        const SHEET_NAMES = ['Расписание', 'Группа А', 'Группа Б']; 
 
         const selectEl = document.getElementById('sheet-select');
         const loadingEl = document.getElementById('loading');
@@ -71,7 +74,7 @@
         const tableBodyEl = document.getElementById('table-body');
         const judgeInfoEl = document.getElementById('judge-info');
 
-        // Заполняем выпадающий список
+        // Наполняем меню
         SHEET_NAMES.forEach(name => {
             const option = document.createElement('option');
             option.value = name;
@@ -82,14 +85,13 @@
         function loadSheet(sheetName) {
             loadingEl.style.display = 'block';
             
-            // Очищаем старые данные
+            // Очистка
             groupTitleEl.textContent = '';
             tableHeadersEl.innerHTML = '';
             tableBodyEl.innerHTML = '';
             judgeInfoEl.textContent = '';
             judgeInfoEl.style.display = 'none';
 
-            // Берем ВСЕ данные как текст (headers=0)
             const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&headers=0&sheet=${encodeURIComponent(sheetName)}`;
 
             fetch(API_URL)
@@ -99,74 +101,101 @@
                     const data = JSON.parse(jsonString);
                     loadingEl.style.display = 'none';
 
-                    const rows = data.table.rows;
-                    if (!rows || rows.length < 2) {
-                        tableBodyEl.innerHTML = '<tr><td style="color:red;">Мало данных на листе.</td></tr>';
+                    if (!data.table || !data.table.rows || data.table.rows.length === 0) {
+                        tableBodyEl.innerHTML = '<tr><td style="color:red;">Нет данных на листе.</td></tr>';
                         return;
                     }
 
-                    // --- ШАГ 1: Получаем название (Строка 1) ---
-                    const titleRowCells = rows[0].c;
-                    // Ищем первую непустую ячейку в первой строке
-                    const titleCell = titleRowCells.find(cell => cell && cell.v !== null && String(cell.v).trim() !== '');
-                    if (titleCell) {
-                        groupTitleEl.textContent = String(titleCell.v);
-                    }
-
-                    // --- ШАГ 2: Получаем заголовки столбцов (Строка 2) ---
-                    rows[1].c.forEach(cell => {
-                        const th = document.createElement('th');
-                        let val = '';
-                        if (cell && cell.v !== null) val = String(cell.v);
-                        th.textContent = val;
-                        tableHeadersEl.appendChild(th);
+                    // ШАГ 1: Превращаем сложные данные Google в простой массив и определяем ширину таблицы
+                    let maxCols = 0;
+                    const cleanRows = data.table.rows.map(row => {
+                        const cells = row.c ? row.c.map(cell => {
+                            if (!cell) return '';
+                            let val = cell.f !== undefined ? cell.f : cell.v;
+                            return val !== null ? String(val).trim() : '';
+                        }) : [];
+                        
+                        // Ищем реальную длину строки (отсекаем пустые столбцы справа)
+                        let lastContent = -1;
+                        for (let i = cells.length - 1; i >= 0; i--) {
+                            if (cells[i] !== '') { lastContent = i; break; }
+                        }
+                        const actualCells = cells.slice(0, lastContent + 1);
+                        if (actualCells.length > maxCols) maxCols = actualCells.length;
+                        return actualCells;
                     });
 
-                    // --- ШАГ 3: Получаем команды и ищем Судью (Строка 3 и далее) ---
-                    for (let i = 2; i < rows.length; i++) {
-                        const row = rows[i];
-                        if (!row || !row.c) continue;
+                    // ШАГ 2: Умный разбор строк
+                    let headerFound = false;
 
-                        let isEmptyRow = true;
+                    cleanRows.forEach((row, rowIndex) => {
+                        // Добиваем строку пустыми ячейками до максимальной ширины таблицы (важно для объединенных ячеек)
+                        while(row.length < maxCols) row.push('');
                         
-                        // Вытаскиваем значения всех ячеек в строке в простой массив
-                        const cellValues = row.c.map(cell => {
-                            if (cell && cell.v !== null) {
-                                const val = String(cell.f !== undefined ? cell.f : cell.v).trim();
-                                if (val !== '') isEmptyRow = false;
-                                return val;
-                            }
-                            return '';
-                        });
+                        // Считаем, сколько реально текста в этой строке
+                        const populatedCells = row.filter(val => val !== '');
+                        
+                        if (populatedCells.length === 0) return; // Игнорируем полностью пустые строки
 
-                        if (isEmptyRow) continue; // Пропускаем пустые строки
-
-                        // Проверяем, есть ли в строке слово "судья" (независимо от регистра)
-                        const isJudgeRow = cellValues.some(val => val.toLowerCase().includes('судья'));
-
+                        // Проверка на Судью
+                        const isJudgeRow = row.some(val => val.toLowerCase().includes('судья'));
                         if (isJudgeRow) {
-                            // Если это судья, склеиваем все непустые слова в строке (например "Судья соревнований" и "Ефремов")
-                            const judgeText = cellValues.filter(val => val !== '').join(': ');
-                            judgeInfoEl.textContent = judgeText;
+                            judgeInfoEl.textContent = populatedCells.join(': ');
                             judgeInfoEl.style.display = 'block';
-                            continue; // НЕ добавляем эту строку в таблицу
+                            return; 
                         }
 
-                        // Если это обычная строка с командой — добавляем в таблицу
-                        const tr = document.createElement('tr');
-                        cellValues.forEach(val => {
-                            const td = document.createElement('td');
-                            
-                            if (val === '-') {
-                                td.style.backgroundColor = '#ff4d4d'; // Красим прочерк
-                            } else {
-                                td.textContent = val;
+                        // Если шапка еще не найдена, и в строке только 1 слово -> Это Главный Заголовок ("Расписание" или "Группа А")
+                        if (!headerFound && populatedCells.length === 1 && rowIndex <= 1) {
+                            groupTitleEl.textContent = populatedCells[0];
+                            return;
+                        }
+
+                        // Если шапка еще не найдена, и в строке много слов -> Это Шапка
+                        if (!headerFound && populatedCells.length > 1) {
+                            headerFound = true;
+                            row.forEach(val => {
+                                const th = document.createElement('th');
+                                th.textContent = val;
+                                tableHeadersEl.appendChild(th);
+                            });
+                            return;
+                        }
+
+                        // Если шапка уже была, всё остальное — это данные (тело таблицы)
+                        if (headerFound) {
+                            const tr = document.createElement('tr');
+
+                            // Если в теле таблицы есть строка только с 1 словом (например "8 мая") -> Это дата-разделитель
+                            if (populatedCells.length === 1) {
+                                tr.className = 'sub-header';
+                                const td = document.createElement('td');
+                                td.textContent = populatedCells[0];
+                                td.colSpan = maxCols; // Растягиваем на всю ширину
+                                tr.appendChild(td);
+                            } 
+                            // Обычная строка с командами
+                            else {
+                                row.forEach(val => {
+                                    const td = document.createElement('td');
+                                    
+                                    if (val === '-') {
+                                        td.style.backgroundColor = '#ff4d4d'; // Красный прочерк
+                                    } else {
+                                        td.textContent = val;
+                                    }
+                                    
+                                    // Если в "Расписании" есть счет (например "2:3"), делаем его жирным
+                                    if (val.includes(':') && val.length <= 5) {
+                                        td.style.fontWeight = 'bold';
+                                    }
+
+                                    tr.appendChild(td);
+                                });
                             }
-                            
-                            tr.appendChild(td);
-                        });
-                        tableBodyEl.appendChild(tr);
-                    }
+                            tableBodyEl.appendChild(tr);
+                        }
+                    });
                 })
                 .catch(error => {
                     console.error('Ошибка:', error);
@@ -175,13 +204,8 @@
                 });
         }
 
-        // Запуск при выборе из списка
         selectEl.addEventListener('change', (event) => loadSheet(event.target.value));
-
-        // Автозагрузка первого листа при открытии страницы
-        if (SHEET_NAMES.length > 0) {
-            loadSheet(SHEET_NAMES[0]);
-        }
+        if (SHEET_NAMES.length > 0) loadSheet(SHEET_NAMES[0]);
     </script>
 </body>
 </html>
