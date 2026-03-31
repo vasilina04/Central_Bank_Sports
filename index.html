@@ -6,68 +6,129 @@
     <title>Турнирная таблица</title>
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f9; color: #333; }
-        h2 { text-align: center; }
-        .table-container { max-width: 800px; margin: 0 auto; overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
-        th, td { padding: 15px; text-align: center; border-bottom: 1px solid #ddd; }
+        h2 { text-align: center; color: #2ea44f; }
+        .table-container { max-width: 800px; margin: 0 auto; overflow-x: auto; background: white; padding: 20px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 8px; }
+        
+        /* Стили для выбора листа */
+        .controls { text-align: center; margin-bottom: 20px; }
+        .controls label { font-weight: bold; margin-right: 10px; font-size: 16px; }
+        select { padding: 10px 15px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; outline: none; background-color: #fff; }
+        select:hover { border-color: #2ea44f; }
+        
+        table { width: 100%; border-collapse: collapse; overflow: hidden; }
+        th, td { padding: 12px 15px; text-align: center; border-bottom: 1px solid #ddd; }
         th { background-color: #2ea44f; color: white; font-weight: bold; }
         tr:hover { background-color: #f1f1f1; }
+        
+        /* Сообщение о загрузке */
+        #loading { text-align: center; font-size: 18px; color: #666; margin: 20px 0; display: none; }
     </style>
 </head>
 <body>
 
     <div class="table-container">
-        <h2>🏆 Наша Турнирная Таблица</h2>
+        <h2>🏆 Турнирная Таблица</h2>
+        
+        <div class="controls">
+            <label for="sheet-select">Выберите блок (лист):</label>
+            <select id="sheet-select">
+                </select>
+        </div>
+
+        <div id="loading">Загрузка данных... ⏳</div>
+
         <table id="tournament-table">
             </table>
     </div>
 
     <script>
-        // ID вашей таблицы уже вставлен
+        // 1. ВАШ ID ТАБЛИЦЫ
         const SHEET_ID = '1Aq8Kow_unD9Z_mclRBg0mcPl8Ibh64_s7rqVrvdVq3I'; 
         
-        // Ссылка для получения данных в формате TSV
-        const TSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=tsv`;
+        // 2. ВАЖНО: Впишите сюда точные названия ваших листов из Google Таблицы!
+        // Соблюдайте заглавные буквы и пробелы. Обязательно в кавычках через запятую.
+        const SHEET_NAMES = ['Расписание', 'Граппа А', 'Группа Б']; 
 
-        fetch(TSV_URL)
-            .then(response => {
-                if (!response.ok) throw new Error("Ошибка сети");
-                return response.text();
-            })
-            .then(tsvText => {
-                // Проверка: если Google вместо данных отдает страницу авторизации (таблица закрыта)
-                if (tsvText.includes('<!DOCTYPE html>') || tsvText.includes('<html')) {
-                    throw new Error("Таблица закрыта настройками приватности.");
-                }
+        // Элементы на странице
+        const selectEl = document.getElementById('sheet-select');
+        const tableEl = document.getElementById('tournament-table');
+        const loadingEl = document.getElementById('loading');
 
-                const rows = tsvText.split('\n');
-                const table = document.getElementById('tournament-table');
+        // Заполняем выпадающий список названиями листов
+        SHEET_NAMES.forEach(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = name;
+            selectEl.appendChild(option);
+        });
 
-                rows.forEach((row, index) => {
-                    if (row.trim() === '') return; 
-                    const cols = row.split('\t');
-                    const tr = document.createElement('tr');
+        // Функция для загрузки конкретного листа
+        function loadSheet(sheetName) {
+            // Показываем загрузку, очищаем старую таблицу
+            loadingEl.style.display = 'block';
+            tableEl.innerHTML = ''; 
 
-                    cols.forEach(col => {
-                        const cell = document.createElement(index === 0 ? 'th' : 'td');
-                        cell.textContent = col.replace(/\r/g, ''); 
-                        tr.appendChild(cell);
+            // Добавляем параметр &sheet=НазваниеЛиста в ссылку
+            const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&headers=1&sheet=${encodeURIComponent(sheetName)}`;
+
+            fetch(API_URL)
+                .then(response => response.text())
+                .then(text => {
+                    const jsonString = text.match(/google\.visualization\.Query\.setResponse\(([\s\S\w]+)\)/)[1];
+                    const data = JSON.parse(jsonString);
+                    
+                    // Скрываем надпись "Загрузка"
+                    loadingEl.style.display = 'none';
+
+                    // Если лист пустой или не найден
+                    if (!data.table || !data.table.cols || !data.table.rows) {
+                        tableEl.innerHTML = '<tr><td style="color:red;">Данные не найдены. Проверьте название листа!</td></tr>';
+                        return;
+                    }
+
+                    // 1. Создаем заголовки
+                    const thead = document.createElement('tr');
+                    data.table.cols.forEach(col => {
+                        if(col.label) {
+                            const th = document.createElement('th');
+                            th.textContent = col.label; 
+                            thead.appendChild(th);
+                        }
                     });
+                    tableEl.appendChild(thead);
 
-                    table.appendChild(tr);
+                    // 2. Создаем строки
+                    data.table.rows.forEach(row => {
+                        const tr = document.createElement('tr');
+                        row.c.forEach(cell => {
+                            const td = document.createElement('td');
+                            let cellValue = '';
+                            if (cell !== null && cell !== undefined) {
+                                cellValue = cell.f !== undefined ? cell.f : cell.v;
+                            }
+                            td.textContent = cellValue;
+                            tr.appendChild(td);
+                        });
+                        tableEl.appendChild(tr);
+                    });
+                })
+                .catch(error => {
+                    console.error('Ошибка загрузки:', error);
+                    loadingEl.style.display = 'none';
+                    tableEl.innerHTML = `<tr><td style="color: red;"><b>Ошибка!</b> Возможно, неверно указано название листа: "${sheetName}".</td></tr>`;
                 });
-            })
-            .catch(error => {
-                console.error('Ошибка:', error);
-                document.getElementById('tournament-table').innerHTML = `
-                    <tr>
-                        <td style="color: red; padding: 20px;">
-                            <b>Ошибка загрузки данных!</b><br><br>
-                            Убедитесь, что в Google Таблицах вы нажали: <br>
-                            <i>Настройки доступа -> "Все, у кого есть ссылка" -> Читатель.</i>
-                        </td>
-                    </tr>`;
-            });
+        }
+
+        // Слушаем изменения в выпадающем списке. 
+        // Когда пользователь выбирает другой лист, запускаем загрузку
+        selectEl.addEventListener('change', (event) => {
+            loadSheet(event.target.value);
+        });
+
+        // Загружаем самый первый лист из массива при открытии страницы
+        if (SHEET_NAMES.length > 0) {
+            loadSheet(SHEET_NAMES[0]);
+        }
     </script>
 </body>
 </html>
