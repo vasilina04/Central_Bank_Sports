@@ -6,23 +6,27 @@
     <title>Турнирная таблица</title>
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f9; color: #333; }
-        h2 { text-align: center; color: #2ea44f; }
-        .table-container { max-width: 900px; margin: 0 auto; overflow-x: auto; background: white; padding: 20px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 8px; }
+        h2 { text-align: center; color: #2ea44f; margin-bottom: 10px; }
         
-        .controls { text-align: center; margin-bottom: 20px; }
+        .table-container { max-width: 900px; margin: 0 auto; overflow-x: auto; background: white; padding: 20px 30px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 8px; }
+        
+        .controls { text-align: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee; }
         .controls label { font-weight: bold; margin-right: 10px; font-size: 16px; }
-        select { padding: 10px 15px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; background-color: #fff; }
+        select { padding: 8px 15px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; outline: none; }
         select:hover { border-color: #2ea44f; }
         
-        table { width: 100%; border-collapse: collapse; }
-        td { padding: 10px; text-align: center; border: 1px solid #ddd; }
-        tr:hover { background-color: #f9f9f9; }
+        /* Заголовок группы (например, "Группа А") */
+        #group-title { text-align: left; color: #333; font-size: 20px; margin-bottom: 15px; margin-top: 10px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th, td { padding: 12px; text-align: center; border: 1px solid #ddd; }
+        
+        /* Стили для зеленой шапки (вторая строка из гугла) */
+        th { background-color: #2ea44f; color: white; font-weight: bold; border-color: #1f853d; }
+        tr:hover td { background-color: #f9f9f9; }
 
-        /* --- ОСОБЫЕ СТИЛИ ДЛЯ ВАШЕЙ ТАБЛИЦЫ --- */
-        /* 1. Настройка первой строки ("Группа А") */
-        tr:nth-child(1) td { font-weight: bold; font-size: 18px; color: #2ea44f; text-align: left; background-color: #fff; border-top: none; border-left: none; border-right: none;}
-        /* 2. Настройка второй строки (Заголовки "1", "2", "3"...) */
-        tr:nth-child(2) td { background-color: #2ea44f; color: white; font-weight: bold; border-color: #1f853d; }
+        /* Блок для судьи под таблицей */
+        #judge-info { text-align: right; font-size: 16px; font-weight: bold; font-style: italic; color: #555; }
         
         #loading { text-align: center; font-size: 18px; color: #666; margin: 20px 0; display: none; }
     </style>
@@ -33,26 +37,41 @@
         <h2>🏆 Турнирная Таблица</h2>
         
         <div class="controls">
-            <label for="sheet-select">Выберите этап/группу:</label>
+            <label for="sheet-select">Выберите этап:</label>
             <select id="sheet-select"></select>
         </div>
 
         <div id="loading">Загрузка данных... ⏳</div>
 
+        <h3 id="group-title"></h3> 
+
         <table id="tournament-table">
-            </table>
+            <thead>
+                <tr id="table-headers"></tr>
+            </thead>
+            <tbody id="table-body">
+                </tbody>
+        </table>
+
+        <div id="judge-info"></div>
     </div>
 
     <script>
+        // 1. ВАШ ID ТАБЛИЦЫ
         const SHEET_ID = '1Aq8Kow_unD9Z_mclRBg0mcPl8Ibh64_s7rqVrvdVq3I'; 
         
-        // ВНИМАНИЕ: Напишите здесь точные названия листов из вашей таблицы!
-        const SHEET_NAMES = ['Лист1', 'Лист2']; 
+        // 2. ВАШИ ЛИСТЫ (ЗАПОЛНИТЕ ИХ!)
+        const SHEET_NAMES = ['Расписание', 'Группа А', "Группа Б"]; 
 
         const selectEl = document.getElementById('sheet-select');
-        const tableEl = document.getElementById('tournament-table');
         const loadingEl = document.getElementById('loading');
+        
+        const groupTitleEl = document.getElementById('group-title');
+        const tableHeadersEl = document.getElementById('table-headers');
+        const tableBodyEl = document.getElementById('table-body');
+        const judgeInfoEl = document.getElementById('judge-info');
 
+        // Заполняем выпадающий список
         SHEET_NAMES.forEach(name => {
             const option = document.createElement('option');
             option.value = name;
@@ -62,9 +81,15 @@
 
         function loadSheet(sheetName) {
             loadingEl.style.display = 'block';
-            tableEl.innerHTML = ''; 
+            
+            // Очищаем старые данные
+            groupTitleEl.textContent = '';
+            tableHeadersEl.innerHTML = '';
+            tableBodyEl.innerHTML = '';
+            judgeInfoEl.textContent = '';
+            judgeInfoEl.style.display = 'none';
 
-            // Параметр headers=0 заставляет код считывать абсолютно все строки как данные
+            // Берем ВСЕ данные как текст (headers=0)
             const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&headers=0&sheet=${encodeURIComponent(sheetName)}`;
 
             fetch(API_URL)
@@ -74,58 +99,86 @@
                     const data = JSON.parse(jsonString);
                     loadingEl.style.display = 'none';
 
-                    if (!data.table || !data.table.rows) {
-                        tableEl.innerHTML = '<tr><td style="color:red;">Данные не найдены.</td></tr>';
+                    const rows = data.table.rows;
+                    if (!rows || rows.length < 2) {
+                        tableBodyEl.innerHTML = '<tr><td style="color:red;">Мало данных на листе.</td></tr>';
                         return;
                     }
 
-                    data.table.rows.forEach(row => {
-                        const tr = document.createElement('tr');
-                        let isEmptyRow = true; 
+                    // --- ШАГ 1: Получаем название (Строка 1) ---
+                    const titleRowCells = rows[0].c;
+                    // Ищем первую непустую ячейку в первой строке
+                    const titleCell = titleRowCells.find(cell => cell && cell.v !== null && String(cell.v).trim() !== '');
+                    if (titleCell) {
+                        groupTitleEl.textContent = String(titleCell.v);
+                    }
 
-                        // Проверяем, не пустая ли строка целиком
-                        row.c.forEach(cell => {
-                            if (cell !== null && cell.v !== null && String(cell.v).trim() !== '') {
-                                isEmptyRow = false;
+                    // --- ШАГ 2: Получаем заголовки столбцов (Строка 2) ---
+                    rows[1].c.forEach(cell => {
+                        const th = document.createElement('th');
+                        let val = '';
+                        if (cell && cell.v !== null) val = String(cell.v);
+                        th.textContent = val;
+                        tableHeadersEl.appendChild(th);
+                    });
+
+                    // --- ШАГ 3: Получаем команды и ищем Судью (Строка 3 и далее) ---
+                    for (let i = 2; i < rows.length; i++) {
+                        const row = rows[i];
+                        if (!row || !row.c) continue;
+
+                        let isEmptyRow = true;
+                        
+                        // Вытаскиваем значения всех ячеек в строке в простой массив
+                        const cellValues = row.c.map(cell => {
+                            if (cell && cell.v !== null) {
+                                const val = String(cell.f !== undefined ? cell.f : cell.v).trim();
+                                if (val !== '') isEmptyRow = false;
+                                return val;
                             }
+                            return '';
                         });
 
-                        if (isEmptyRow) return;
+                        if (isEmptyRow) continue; // Пропускаем пустые строки
 
-                        // Создаем ячейки
-                        row.c.forEach(cell => {
+                        // Проверяем, есть ли в строке слово "судья" (независимо от регистра)
+                        const isJudgeRow = cellValues.some(val => val.toLowerCase().includes('судья'));
+
+                        if (isJudgeRow) {
+                            // Если это судья, склеиваем все непустые слова в строке (например "Судья соревнований" и "Ефремов")
+                            const judgeText = cellValues.filter(val => val !== '').join(': ');
+                            judgeInfoEl.textContent = judgeText;
+                            judgeInfoEl.style.display = 'block';
+                            continue; // НЕ добавляем эту строку в таблицу
+                        }
+
+                        // Если это обычная строка с командой — добавляем в таблицу
+                        const tr = document.createElement('tr');
+                        cellValues.forEach(val => {
                             const td = document.createElement('td');
                             
-                            let cellValue = '';
-                            if (cell !== null && cell.v !== null) {
-                                cellValue = cell.f !== undefined ? String(cell.f) : String(cell.v);
-                            }
-                            
-                            const valStr = cellValue.trim();
-
-                            // ГЛАВНОЕ УСЛОВИЕ: если стоит прочерк, делаем красным!
-                            if (valStr === '-') {
-                                td.style.backgroundColor = '#ff4d4d'; // Красный цвет
-                                td.textContent = ''; // Убираем сам минус визуально (по желанию)
+                            if (val === '-') {
+                                td.style.backgroundColor = '#ff4d4d'; // Красим прочерк
                             } else {
-                                td.textContent = valStr;
+                                td.textContent = val;
                             }
                             
                             tr.appendChild(td);
                         });
-                        
-                        tableEl.appendChild(tr);
-                    });
+                        tableBodyEl.appendChild(tr);
+                    }
                 })
                 .catch(error => {
-                    console.error('Ошибка загрузки:', error);
+                    console.error('Ошибка:', error);
                     loadingEl.style.display = 'none';
-                    tableEl.innerHTML = `<tr><td style="color: red;"><b>Ошибка загрузки!</b> Проверьте название листа.</td></tr>`;
+                    tableBodyEl.innerHTML = `<tr><td style="color: red;"><b>Ошибка загрузки!</b></td></tr>`;
                 });
         }
 
+        // Запуск при выборе из списка
         selectEl.addEventListener('change', (event) => loadSheet(event.target.value));
 
+        // Автозагрузка первого листа при открытии страницы
         if (SHEET_NAMES.length > 0) {
             loadSheet(SHEET_NAMES[0]);
         }
