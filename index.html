@@ -159,7 +159,7 @@
                                     const td = document.createElement('td');
                                     
                                     // Ловим любые прочерки: минус, короткое тире, длинное тире
-                                    const isDash = ['-', '—', '–', '−'].includes(val);
+                                    const isDash = ['нет', '—', '–', '−'].includes(val);
                                     
                                     if (isDash) {
                                         td.style.backgroundColor = '#ff4d4d'; // Красим в красный
